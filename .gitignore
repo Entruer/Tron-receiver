@@ -1,0 +1,10 @@
+#Clion
+cmake-build-*/
+.idea/
+
+#VScode
+.vscode
+
+#esp-idf
+build/
+sdkconfig.old
