@@ -31,6 +31,7 @@ esp_bd_addr_t peer_bd_addr     = {0};
 uint8_t       peer_bdname_len  = 0;
 uint8_t       water_level      = 0;
 bool          server_connected = false;
+bool          rediscorvery     = false;
 
 /****************************************************************************************
  * Function Definitions
@@ -159,6 +160,7 @@ static void spp_callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
         /* Start to write the first data packet */
         ESP_LOGI("Bluetooth", "ESP_SPP_OPEN_EVT: successfully connected to remote device");
         server_connected = true;
+        rediscorvery     = false;
       }
       else
       {
@@ -169,6 +171,7 @@ static void spp_callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
       ESP_LOGI("Bluetooth", "ESP_SPP_CLOSE_EVT status:%d handle:%" PRIu32 " close_by_remote:%d", param->close.status,
                param->close.handle, param->close.async);
       server_connected = false;
+      rediscorvery     = true;
       break;
     case ESP_SPP_START_EVT:
       ESP_LOGI("Bluetooth", "ESP_SPP_START_EVT");
@@ -190,7 +193,7 @@ static void spp_callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
  * Tasks
  ****************************************************************************************/
 
-void spp_uart_task(void *pvParameters)
+void uart_task(void *pvParameters)
 {
   while (1)
   {
@@ -201,6 +204,19 @@ void spp_uart_task(void *pvParameters)
     else
     {
       ESP_LOGI("UART", "Not connected to server");
+    }
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
+}
+
+void rediscovery_task(void *pvParameters)
+{
+  while (1)
+  {
+    if (rediscorvery)
+    {
+      esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 30, 0);
+      rediscorvery = false;
     }
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
@@ -236,7 +252,8 @@ void app_main(void)
   ESP_ERROR_CHECK(esp_spp_register_callback(spp_callback));
   ESP_ERROR_CHECK(esp_spp_enhanced_init(&spp_cfg));
 
-  xTaskCreate(spp_uart_task, "spp_uart_task", 2048, NULL, 10, NULL);
+  xTaskCreate(uart_task, "uart_task", 4096, NULL, 10, NULL);
+  xTaskCreate(rediscovery_task, "rediscovery_task", 4096, NULL, 10, NULL);
 
   while (1)
   {
