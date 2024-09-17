@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "driver/gpio.h"
+#include "driver/uart.h"
 #include "esp_bt.h"
 #include "esp_bt_device.h"
 #include "esp_bt_main.h"
@@ -20,8 +22,12 @@
  * Defines
  ****************************************************************************************/
 
-static char       peer_bdname[ESP_BT_GAP_MAX_BDNAME_LEN + 1];
-static const char remote_device_name[] = "Pawpaw";
+#define LED_PIN          GPIO_NUM_2
+
+#define UART_PORT        UART_NUM_2
+#define UART_TX_PIN      GPIO_NUM_17
+#define UART_RX_PIN      GPIO_NUM_16
+#define UART_BUFFER_SIZE 2048
 
 /****************************************************************************************
  * Global Variables
@@ -32,6 +38,22 @@ uint8_t       peer_bdname_len  = 0;
 uint8_t       water_level      = 0;
 bool          server_connected = false;
 bool          rediscorvery     = false;
+
+char       peer_bdname[ESP_BT_GAP_MAX_BDNAME_LEN + 1];
+const char remote_device_name[] = "Pawpaw";
+
+/****************************************************************************************
+ * Configuration
+ ****************************************************************************************/
+
+uart_config_t uart_config = {
+        .baud_rate  = 115200,
+        .data_bits  = UART_DATA_8_BITS,
+        .parity     = UART_PARITY_DISABLE,
+        .stop_bits  = UART_STOP_BITS_1,
+        .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
+};
 
 /****************************************************************************************
  * Function Definitions
@@ -197,6 +219,7 @@ void uart_task(void *pvParameters)
 {
   while (1)
   {
+    uint8_t data[2];
     if (server_connected)
     {
       ESP_LOGI("UART", "water level: %d", water_level);
@@ -205,6 +228,10 @@ void uart_task(void *pvParameters)
     {
       ESP_LOGI("UART", "Not connected to server");
     }
+    gpio_set_level(LED_PIN, server_connected);
+    data[0] = server_connected;
+    data[1] = water_level;
+    uart_write_bytes(UART_PORT, data, 2);
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
 }
@@ -236,7 +263,13 @@ void app_main(void)
   }
   ESP_ERROR_CHECK(ret);
 
-  ESP_ERROR_CHECK(ret);
+  ESP_ERROR_CHECK(gpio_reset_pin(LED_PIN));
+  ESP_ERROR_CHECK(gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT));
+
+  ESP_ERROR_CHECK(uart_driver_install(UART_PORT, UART_BUFFER_SIZE, 0, 0, NULL, 0));
+  ESP_ERROR_CHECK(uart_param_config(UART_PORT, &uart_config));
+  ESP_ERROR_CHECK(uart_set_pin(UART_PORT, UART_TX_PIN, UART_RX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+
   esp_bt_controller_config_t bt_cfg        = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
   esp_bluedroid_config_t     bluedroid_cfg = BT_BLUEDROID_INIT_CONFIG_DEFAULT();
   esp_spp_cfg_t              spp_cfg       = {
